@@ -9,9 +9,36 @@ function parseFormat(raw: string | null): ReportFormat | null {
   return null;
 }
 
-function errorRedirect(req: NextRequest, message: string) {
-  const url = new URL("/error", req.url);
-  url.searchParams.set("message", message);
+/** Public site origin (ngrok / production), not the internal localhost behind a tunnel. */
+function publicOrigin(req: NextRequest): string {
+  const fromEnv = (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_URL ||
+    ""
+  )
+    .trim()
+    .replace(/\/+$/, "");
+  if (fromEnv) return fromEnv;
+
+  const forwardedHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const forwardedProto =
+    req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "https";
+  if (forwardedHost) return `${forwardedProto}://${forwardedHost}`;
+
+  return req.nextUrl.origin;
+}
+
+function siteRedirect(
+  req: NextRequest,
+  path: string,
+  params?: Record<string, string>,
+) {
+  const url = new URL(path, `${publicOrigin(req)}/`);
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+  }
   return NextResponse.redirect(url);
 }
 
@@ -30,12 +57,12 @@ export async function GET(req: NextRequest) {
   if (sessionId) {
     const result = await fulfillCheckoutSession(sessionId);
     if (!result.ok) {
-      return errorRedirect(req, result.message);
+      return siteRedirect(req, "/error", { message: result.message });
     }
-    const preview = new URL("/report-preview", req.url);
-    preview.searchParams.set("token", result.token);
-    preview.searchParams.set("vin", result.vin);
-    return NextResponse.redirect(preview);
+    return siteRedirect(req, "/report-preview", {
+      token: result.token,
+      vin: result.vin,
+    });
   }
 
   const vin = req.nextUrl.searchParams.get("vin");

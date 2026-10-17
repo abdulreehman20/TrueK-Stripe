@@ -48,7 +48,10 @@ function extractPaymentIntentId(
 }
 
 function extractVinFromSession(session: Stripe.Checkout.Session): string | null {
-  const field = session.custom_fields?.find((f) => f.key === "vin_number");
+  // Stripe auto-keys "VIN Number" as `vinnumber`; we also accept `vin_number`.
+  const field = session.custom_fields?.find(
+    (f) => f.key === "vin_number" || f.key === "vinnumber",
+  );
   const raw = field?.text?.value?.trim();
   return raw ? normalizeVin(raw) : null;
 }
